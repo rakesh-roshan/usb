@@ -1,0 +1,1 @@
+cmd_drivers/usb/gadget/r8a66597-udc.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/gadget/r8a66597-udc.ko drivers/usb/gadget/r8a66597-udc.o drivers/usb/gadget/r8a66597-udc.mod.o

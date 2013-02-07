@@ -1,0 +1,1 @@
+cmd_drivers/usb/phy/isp1301.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/phy/isp1301.ko drivers/usb/phy/isp1301.o drivers/usb/phy/isp1301.mod.o

@@ -1,0 +1,1 @@
+cmd_drivers/usb/renesas_usbhs/renesas_usbhs.o := ld -m elf_i386   -r -o drivers/usb/renesas_usbhs/renesas_usbhs.o drivers/usb/renesas_usbhs/common.o drivers/usb/renesas_usbhs/mod.o drivers/usb/renesas_usbhs/pipe.o drivers/usb/renesas_usbhs/fifo.o drivers/usb/renesas_usbhs/mod_host.o drivers/usb/renesas_usbhs/mod_gadget.o 

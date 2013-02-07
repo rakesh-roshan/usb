@@ -1,0 +1,1 @@
+cmd_drivers/usb/gadget/g_hid.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/gadget/g_hid.ko drivers/usb/gadget/g_hid.o drivers/usb/gadget/g_hid.mod.o

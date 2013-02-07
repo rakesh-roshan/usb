@@ -1,0 +1,1 @@
+cmd_drivers/usb/host/sl811_cs.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/host/sl811_cs.ko drivers/usb/host/sl811_cs.o drivers/usb/host/sl811_cs.mod.o

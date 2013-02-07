@@ -1,0 +1,2 @@
+kernel/drivers/usb/chipidea/ci_hdrc.ko
+kernel/drivers/usb/chipidea/ci13xxx_pci.ko
