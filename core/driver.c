@@ -764,7 +764,10 @@ static int usb_device_match(struct device *dev, struct device_driver *drv)
 
 		intf = to_usb_interface(dev);
 		usb_drv = to_usb_driver(drv);
-
+        /*if(   strcmp(usb_drv->name, "hub") 
+           && strcmp(usb_drv->name, "usb") 
+           && strcmp(usb_drv->name, "bus"))
+           return 0;*/
 		id = usb_match_id(intf, usb_drv->id_table);
 		if (id){
            		pr_info("%s : ROSHAN matched new device driver %s\n",
