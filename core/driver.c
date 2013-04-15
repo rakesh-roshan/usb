@@ -741,6 +741,13 @@ const struct usb_device_id *usb_match_id(struct usb_interface *interface,
 }
 EXPORT_SYMBOL_GPL(usb_match_id);
 
+static struct usb_hub *hdev_to_hub(struct usb_device *hdev)
+{
+        if (!hdev || !hdev->actconfig || !hdev->maxchild)
+                return NULL;
+        return usb_get_intfdata(hdev->actconfig->interface[0]);
+}
+
 static int usb_device_match(struct device *dev, struct device_driver *drv)
 {
 	/* devices and interfaces are handled separately */
@@ -757,29 +764,29 @@ static int usb_device_match(struct device *dev, struct device_driver *drv)
 		struct usb_interface *intf;
 		struct usb_driver *usb_drv;
 		const struct usb_device_id *id;
-
+		intf = to_usb_interface(dev);
+		usb_drv = to_usb_driver(drv);
+        struct usb_device *usb_dev = interface_to_usbdev(intf);
 		/* device drivers never match interfaces */
 		if (is_usb_device_driver(drv))
 			return 0;
 
-		intf = to_usb_interface(dev);
-		usb_drv = to_usb_driver(drv);
         /*if(   strcmp(usb_drv->name, "hub") 
            && strcmp(usb_drv->name, "usb") 
            && strcmp(usb_drv->name, "bus"))
            return 0;*/
 		id = usb_match_id(intf, usb_drv->id_table);
 		if (id){
-           		pr_info("%s : ROSHAN matched new device driver %s\n",
-                        intf->dev.init_name,usb_drv->name);
+           		pr_info("%s:%d : ROSHAN matched new device driver %s on hub %d on port %d\n",
+                        dev_name(dev),usb_dev->devnum,usb_drv->name,usb_dev->parent?usb_dev->parent->devnum:0,usb_dev->portnum);
  
 			return 1;
         }
 
 		id = usb_match_dynamic_id(intf, usb_drv);
 		if (id){
-            pr_info("%s : ROSHAN matched new device driver dynamically %s\n",
-                    intf->dev.init_name,usb_drv->name);
+           		pr_info("%s:%d : ROSHAN matched new device driver dynamically %s on hub %d on port %d\n",
+                        dev_name(dev),usb_dev->devnum,usb_drv->name,usb_dev->parent?usb_dev->parent->devnum:0,usb_dev->portnum);
 
 			return 1;
         }

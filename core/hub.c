@@ -1,3 +1,4 @@
+
 /*
  * USB hub driver.
  *
@@ -24,6 +25,7 @@
 #include <linux/kthread.h>
 #include <linux/mutex.h>
 #include <linux/freezer.h>
+#include <linux/net.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -36,6 +38,11 @@
 #define CONFIG_USB_ANNOUNCE_NEW_DEVICES
 #endif
 #endif
+
+#define BUSID_SIZE 32
+#define MAX_BUSID 16
+#define MAX_BUS_NUM 5
+
 
 struct usb_hub {
 	struct device		*intfdev;	/* the "interface" device */
@@ -64,12 +71,16 @@ struct usb_hub {
 							device present */
 	unsigned long		wakeup_bits[1];	/* ports that have signaled
 							remote wakeup */
+	unsigned long		exported_bits[1];	/* ports that have signaled
+							remote wakeup */
 #if USB_MAXCHILDREN > 31 /* 8*sizeof(unsigned long) - 1 */
 #error event_bits[] is too short!
 #endif
 
 	struct usb_hub_descriptor *descriptor;	/* class descriptor */
 	struct usb_tt		tt;		/* Transaction Translator */
+
+    int sockfds[USB_MAXCHILDREN];/*Exported port details*/
 
 	unsigned		mA_per_port;	/* current for each child */
 
@@ -617,6 +628,8 @@ static void kick_khubd(struct usb_hub *hub)
 
 	spin_lock_irqsave(&hub_event_lock, flags);
 	if (!hub->disconnected && list_empty(&hub->event_list)) {
+        pr_info("ROSHAN_hub added events in hubd for hub events list ");
+
 		list_add_tail(&hub->event_list, &hub_event_list);
 
 		/* Suppress autosuspend until khubd runs */
@@ -630,6 +643,7 @@ static void kick_khubd(struct usb_hub *hub)
 void usb_kick_khubd(struct usb_device *hdev)
 {
 	struct usb_hub *hub = hdev_to_hub(hdev);
+        pr_info("ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list ");
 
 	if (hub)
 		kick_khubd(hub);
@@ -928,6 +942,29 @@ int usb_remove_device(struct usb_device *udev)
 	return 0;
 }
 
+/**
+ * usb_get_sockfd - Get socket fd related to this device
+ * @udev: device to socket is to be attached
+ * Context: @udev locked, must be able to sleep.
+ *
+ * After @udev's port has been disabled, khubd is notified and it will
+ * see that the device has been disconnected.  When the device is
+ * physically unplugged and something is plugged in, the events will
+ * be received and processed normally.
+ */
+int usb_get_sockfd(struct usb_device *udev)
+{
+	struct usb_hub *hub;
+	if (!udev->parent)	/* Can't remove a root hub */
+		return -EINVAL;
+	hub = hdev_to_hub(udev->parent);
+    if(test_bit(udev->portnum,hub->exported_bits)){
+        return hub->sockfds[udev->portnum - 1];
+    }
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(usb_get_sockfd);
+
 enum hub_activation_type {
 	HUB_INIT, HUB_INIT2, HUB_INIT3,		/* INITs must come first */
 	HUB_POST_RESET, HUB_RESUME, HUB_RESET_RESUME,
@@ -1161,6 +1198,7 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 static void hub_init_func2(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
+    pr_info("ROSHAN_hub hub_init_func2 checking for hub events");
 
 	hub_activate(hub, HUB_INIT2);
 }
@@ -1168,6 +1206,7 @@ static void hub_init_func2(struct work_struct *ws)
 static void hub_init_func3(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
+    pr_info("ROSHAN_hub hub_init_func3 checking for hub events");
 
 	hub_activate(hub, HUB_INIT3);
 }
@@ -1215,6 +1254,7 @@ static int hub_pre_reset(struct usb_interface *intf)
 static int hub_post_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
+    pr_info("ROSHAN_hub hub_post_reset checking for hub events");
 
 	hub_activate(hub, HUB_POST_RESET);
 	return 0;
@@ -1480,6 +1520,7 @@ static int hub_configure(struct usb_hub *hub,
 	/* maybe cycle the hub leds */
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
+    pr_info("ROSHAN_hub hub_configure checking for hub events");
 
 	hub_activate(hub, HUB_INIT);
 	return 0;
@@ -1535,15 +1576,139 @@ static void hub_disconnect(struct usb_interface *intf)
 	kref_put(&hub->kref, hub_release);
 }
 
+static ssize_t show_match_port(struct device *dev, struct device_attribute *attr,
+                               char *buf)
+{
+	int i;
+	char *out = buf;
+	struct usb_hub *hub = dev_get_drvdata(dev);
+
+	//spin_lock(&busid_table_lock);
+	for (i = 1; i <= USB_MAXCHILDREN; i++){
+		if (test_bit(i,hub->exported_bits)){
+			out += sprintf(out, "%d->%d ", i, hub->sockfds[i-1]);
+        }
+    }
+	//spin_unlock(&busid_table_lock);
+	out += sprintf(out, "\n");
+
+	return out - buf;
+}
+
+static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=0;i<USB_MAXCHILDREN && i != portnum-1 ;i++);
+
+    if(i == portnum-1){
+        pr_info("hub.c: port num %d matched to socket %d\n",portnum,sockfd);
+        set_bit(i+1, hub->exported_bits);
+        hub->sockfds[i] = sockfd;
+        return 1;
+    }
+    return 0;
+}
+
+static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=0;i<USB_MAXCHILDREN && i != portnum-1 ;i++);
+
+    if(i == portnum-1){
+        pr_info("hub.c: port num %d cleared from socket %d\n",portnum,sockfd);
+        clear_bit(i+1, hub->exported_bits);
+        hub->sockfds[i] = -1;
+        return 1;
+    }
+    return 0;
+
+}
+
+static ssize_t store_match_port(struct device *dev, struct device_attribute *attr,
+				 const char *buf,size_t count)
+{
+	int len;
+	char busid[BUSID_SIZE];
+	struct usb_hub *hub = dev_get_drvdata(dev);
+    int sockfd;
+    int bus_id_idx;
+
+	if (count < 7)
+		return -EINVAL;
+
+    bus_id_idx = strstr(buf+4," ")-(buf+4);
+
+    pr_info("Bus id provided in %s\n",buf);
+    if(bus_id_idx < 0){
+        pr_info("Bus id not provided in %s\n",buf);
+        return -EINVAL;
+    }
+
+    bus_id_idx += (4 + 1);
+	/* strnlen() does not include \0 */
+	len = strnlen(buf + bus_id_idx, BUSID_SIZE);
+
+	/* busid needs to include \0 termination */
+	if (!(len < BUSID_SIZE))
+		return -EINVAL;
+
+	strncpy(busid, buf + bus_id_idx, BUSID_SIZE);
+    sscanf(buf + 4,"%d",&sockfd);
+
+	if (!strncmp(buf, "add ", 4)) {
+		if (add_match_busid(hub,busid,sockfd) < 0) {
+			return -ENOMEM;
+		} else {
+			pr_debug("add busid %s\n", busid);
+			return count;
+		}
+	} else if (!strncmp(buf, "del ", 4)) {
+		if (del_match_busid(hub,busid,sockfd) < 0) {
+			return -ENODEV;
+		} else {
+			pr_debug("del busid %s\n", busid);
+			return count;
+		}
+	} else {
+		return -EINVAL;
+	}
+}
+
+static DEVICE_ATTR(match_port, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH, show_match_port,
+		   store_match_port);
+
 static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
 	struct usb_host_interface *desc;
 	struct usb_endpoint_descriptor *endpoint;
 	struct usb_device *hdev;
 	struct usb_hub *hub;
+	int err;
 
 	desc = intf->cur_altsetting;
 	hdev = interface_to_usbdev(intf);
+
+    err = 0;
+
+	err = device_create_file(&intf->dev, &dev_attr_match_port);
+	if (err)
+		return err;
 
 	/* Hubs have proper suspend/resume support. */
 	usb_enable_autosuspend(hdev);
@@ -2187,7 +2352,11 @@ int usb_new_device(struct usb_device *udev)
 	 * for configuring the device and invoking the add-device
 	 * notifier chain (used by usbfs and possibly others).
 	 */
+    pr_info("%s:%d : ROSHAN_hub adding new device on hub %d on port %d\n",
+            dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	err = device_add(&udev->dev);
+    pr_info("%s:%d : ROSHAN_hub added new device on hub %d on port %d\n",
+            dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	if (err) {
 		dev_err(&udev->dev, "can't device_add, error %d\n", err);
 		goto fail;
@@ -3035,6 +3204,7 @@ static int hub_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
+    pr_info("ROSHAN_hub hub_resume checking for hub events");
 	hub_activate(hub, HUB_RESUME);
 	return 0;
 }
@@ -3044,6 +3214,7 @@ static int hub_reset_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
+    pr_info("ROSHAN_hub hub_reset_resume checking for hub events");
 	hub_activate(hub, HUB_RESET_RESUME);
 	return 0;
 }
@@ -3776,7 +3947,9 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
  		 * authorization will assign the final address.
  		 */
 		if (udev->wusb == 0) {
-			for (j = 0; j < SET_ADDRESS_TRIES; ++j) {
+            pr_info("%s:%d : ROSHAN_hub setting address on hub %d on port %d\n",
+                    dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+            for (j = 0; j < SET_ADDRESS_TRIES; ++j) {
 				retval = hub_set_address(udev, devnum);
 				if (retval >= 0)
 					break;
@@ -3788,6 +3961,8 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					devnum, retval);
 				goto fail;
 			}
+            pr_info("%s:%d : ROSHAN_hub set address on hub %d on port %d\n",
+                    dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 			if (udev->speed == USB_SPEED_SUPER) {
 				devnum = udev->devnum;
 				dev_info(&udev->dev,
@@ -4060,6 +4235,8 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		 * to the previous one can escape in various ways
 		 */
 		udev = usb_alloc_dev(hdev, hdev->bus, port1);
+        pr_info("%s:%d : ROSHAN_hub allocating device on hub %d on port %d\n",
+                dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		if (!udev) {
 			dev_err (hub_dev,
 				"couldn't allocate port %d usb_device\n",
@@ -4085,7 +4262,11 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		}
 
 		/* reset (non-USB 3.0 devices) and get descriptor */
+        pr_info("%s:%d : ROSHAN_hub initing address on hub %d on port %d\n",
+                dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		status = hub_port_init(hub, udev, port1, i);
+        pr_info("%s:%d : ROSHAN_hub init address on hub %d on port %d\n",
+                dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		if (status < 0)
 			goto loop;
 
@@ -4254,8 +4435,10 @@ static void hub_events(void)
 		spin_lock_irq(&hub_event_lock);
 		if (list_empty(&hub_event_list)) {
 			spin_unlock_irq(&hub_event_lock);
+            pr_info("ROSHAN_hub finished checking for hub events list EMPTY");
 			break;
 		}
+        pr_info("ROSHAN_hub checking for hub events");
 
 		tmp = hub_event_list.next;
 		list_del_init(tmp);
@@ -4497,6 +4680,7 @@ static const struct usb_device_id hub_id_table[] = {
 };
 
 MODULE_DEVICE_TABLE (usb, hub_id_table);
+
 
 static struct usb_driver hub_driver = {
 	.name =		"hub",
