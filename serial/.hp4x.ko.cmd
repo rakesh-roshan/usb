@@ -1,1 +1,0 @@
-cmd_drivers/usb/serial/hp4x.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/serial/hp4x.ko drivers/usb/serial/hp4x.o drivers/usb/serial/hp4x.mod.o
