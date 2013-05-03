@@ -3,3 +3,6 @@
 *~
 module.*
 *.cmd
+*.order
+Module.symvers
+.tmp_versions/

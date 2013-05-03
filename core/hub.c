@@ -26,6 +26,11 @@
 #include <linux/mutex.h>
 #include <linux/freezer.h>
 #include <linux/net.h>
+#include <linux/file.h>
+#include <linux/fs.h>
+#include <linux/slab.h>
+#include <net/sock.h>
+#include <linux/sched.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -80,7 +85,7 @@ struct usb_hub {
 	struct usb_hub_descriptor *descriptor;	/* class descriptor */
 	struct usb_tt		tt;		/* Transaction Translator */
 
-    int sockfds[USB_MAXCHILDREN];/*Exported port details*/
+    struct socket * sockets[USB_MAXCHILDREN];/*Exported port details*/
 
 	unsigned		mA_per_port;	/* current for each child */
 
@@ -943,7 +948,7 @@ int usb_remove_device(struct usb_device *udev)
 }
 
 /**
- * usb_get_sockfd - Get socket fd related to this device
+ * usb_get_socket - Get socket related to this device
  * @udev: device to socket is to be attached
  * Context: @udev locked, must be able to sleep.
  *
@@ -952,18 +957,19 @@ int usb_remove_device(struct usb_device *udev)
  * physically unplugged and something is plugged in, the events will
  * be received and processed normally.
  */
-int usb_get_sockfd(struct usb_device *udev)
+struct socket * usb_get_socket(struct usb_device *udev)
 {
 	struct usb_hub *hub;
 	if (!udev->parent)	/* Can't remove a root hub */
-		return -EINVAL;
+		return NULL;
 	hub = hdev_to_hub(udev->parent);
     if(test_bit(udev->portnum,hub->exported_bits)){
-        return hub->sockfds[udev->portnum - 1];
+        pr_info("ROSHAN_HUB %d port is exported \n",udev->portnum);
+        return hub->sockets[udev->portnum - 1];
     }
-	return -EINVAL;
+	return NULL;
 }
-EXPORT_SYMBOL_GPL(usb_get_sockfd);
+EXPORT_SYMBOL_GPL(usb_get_socket);
 
 enum hub_activation_type {
 	HUB_INIT, HUB_INIT2, HUB_INIT3,		/* INITs must come first */
@@ -1586,7 +1592,7 @@ static ssize_t show_match_port(struct device *dev, struct device_attribute *attr
 	//spin_lock(&busid_table_lock);
 	for (i = 1; i <= USB_MAXCHILDREN; i++){
 		if (test_bit(i,hub->exported_bits)){
-			out += sprintf(out, "%d->%d ", i, hub->sockfds[i-1]);
+			out += sprintf(out, "%d->%p ", i, hub->sockets[i-1]);
         }
     }
 	//spin_unlock(&busid_table_lock);
@@ -1600,7 +1606,16 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
     int i;
     int portnum;
     int busnum;
-    int j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    int j;
+    pid_t pid;
+
+	/* get the process id */
+	if ((pid = task_pid_nr(current)) < 0) {
+        pr_err("unable to get pid");
+	} else {
+        pr_info("The process id is %d", pid);
+	}
+    j = sscanf(busid,"%d-%d",&busnum, &portnum);
     if(j<2){
         pr_info("busid wrong %s\n",busid);
         return 0;
@@ -1609,9 +1624,27 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
     for (i=0;i<USB_MAXCHILDREN && i != portnum-1 ;i++);
 
     if(i == portnum-1){
-        pr_info("hub.c: port num %d matched to socket %d\n",portnum,sockfd);
+        	struct socket *socket;
+            struct file *file;
+            struct inode *inode;
+            
+            file = fget(sockfd);
+            if (!file) {
+                pr_err("[%d] invalid sockfd %d\n",pid,sockfd);
+                return 0;
+            }
+            
+            inode = file->f_dentry->d_inode;
+            
+            if (!inode || !S_ISSOCK(inode->i_mode))
+                return 0;
+            
+            socket = SOCKET_I(inode);
+
+
+            pr_info("hub.c[%d]: port num %d matched to socket %d\n",pid, portnum,sockfd);
         set_bit(i+1, hub->exported_bits);
-        hub->sockfds[i] = sockfd;
+        hub->sockets[i] = socket;
         return 1;
     }
     return 0;
@@ -1633,7 +1666,7 @@ static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
     if(i == portnum-1){
         pr_info("hub.c: port num %d cleared from socket %d\n",portnum,sockfd);
         clear_bit(i+1, hub->exported_bits);
-        hub->sockfds[i] = -1;
+        hub->sockets[i] = NULL;
         return 1;
     }
     return 0;
