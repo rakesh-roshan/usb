@@ -965,7 +965,7 @@ struct socket * usb_get_socket(struct usb_device *udev)
 	hub = hdev_to_hub(udev->parent);
     if(test_bit(udev->portnum,hub->exported_bits)){
         pr_info("ROSHAN_HUB %d port is exported \n",udev->portnum);
-        return hub->sockets[udev->portnum - 1];
+        return hub->sockets[udev->portnum];
     }
 	return NULL;
 }
@@ -1621,13 +1621,15 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
         return 0;
     }
     
-    for (i=0;i<USB_MAXCHILDREN && i != portnum-1 ;i++);
+    for (i=1;i<USB_MAXCHILDREN && i != portnum ;i++);
 
-    if(i == portnum-1){
+    if(i == portnum){
         	struct socket *socket;
             struct file *file;
             struct inode *inode;
-            
+            struct usb_device *hdev = hub->hdev;
+            struct usb_device *udev;
+
             file = fget(sockfd);
             if (!file) {
                 pr_err("[%d] invalid sockfd %d\n",pid,sockfd);
@@ -1643,8 +1645,12 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
 
 
             pr_info("hub.c[%d]: port num %d matched to socket %d\n",pid, portnum,sockfd);
-        set_bit(i+1, hub->exported_bits);
+        set_bit(i, hub->exported_bits);
         hub->sockets[i] = socket;
+        /*udev = hdev->children[port1-1];
+        if(udev){
+            usb_reset_and_verify_device(udev);
+            }*/
         return 1;
     }
     return 0;
@@ -4222,8 +4228,12 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 	}
 
 	/* Disconnect any existing devices under this port */
-	if (udev)
-		usb_disconnect(&hdev->children[port1-1]);
+	if (udev){
+        dev_info(hub_dev,"ROSHAN_HUB disconnecting port %d\n",port1);
+        usb_disconnect(&hdev->children[port1-1]);
+        dev_info(hub_dev,"ROSHAN_HUB disconnected port %d\n",port1);
+
+    }
 	clear_bit(port1, hub->change_bits);
 
 	/* We can forget about a "removed" device when there's a physical
@@ -4235,7 +4245,9 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 
 	if (portchange & (USB_PORT_STAT_C_CONNECTION |
 				USB_PORT_STAT_C_ENABLE)) {
+        dev_info(hub_dev,"ROSHAN_HUB debouncing port %d\n",port1);
 		status = hub_port_debounce(hub, port1);
+        dev_info(hub_dev,"ROSHAN_HUB debounced port %d\n",port1);
 		if (status < 0) {
 			if (printk_ratelimit())
 				dev_err(hub_dev, "connect-debounce failed, "
@@ -4683,6 +4695,36 @@ static void hub_events(void)
 
         } /* end while (1) */
 }
+
+/**
+ * usb_reset_socket - Reset socket related to this device
+ * @udev: device to socket is to be attached
+ * Context: @udev locked, must be able to sleep.
+ *
+ * After @udev's port has been disabled, khubd is notified and it will
+ * see that the device has been disconnected.  When the device is
+ * physically unplugged and something is plugged in, the events will
+ * be received and processed normally.
+ */
+void usb_reset_socket(struct usb_device *udev)
+{
+	struct usb_hub *hub;
+	if (!udev->parent)	/* Can't remove a root hub */
+		return;
+	hub = hdev_to_hub(udev->parent);
+    if(test_bit(udev->portnum,hub->exported_bits)){
+        struct socket *sock;
+        pr_info("ROSHAN_HUB %d port is unexported \n",udev->portnum);
+        sock = hub->sockets[udev->portnum - 1];
+        kernel_sock_shutdown(sock, SHUT_RDWR); 
+		sock_release(sock); 
+        hub->sockets[udev->portnum - 1]=NULL;
+        clear_bit(udev->portnum,hub->exported_bits);
+        //usb_remove_device(udev);
+    }
+	return;
+}
+EXPORT_SYMBOL_GPL(usb_reset_socket);
 
 static int hub_thread(void *__unused)
 {
