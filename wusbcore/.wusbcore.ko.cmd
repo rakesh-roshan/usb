@@ -1,1 +1,0 @@
-cmd_drivers/usb/wusbcore/wusbcore.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/wusbcore/wusbcore.ko drivers/usb/wusbcore/wusbcore.o drivers/usb/wusbcore/wusbcore.mod.o

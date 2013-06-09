@@ -1,1 +1,0 @@
-cmd_drivers/usb/misc/adutux.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/misc/adutux.ko drivers/usb/misc/adutux.o drivers/usb/misc/adutux.mod.o

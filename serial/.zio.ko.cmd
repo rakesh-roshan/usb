@@ -1,1 +1,0 @@
-cmd_drivers/usb/serial/zio.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/serial/zio.ko drivers/usb/serial/zio.o drivers/usb/serial/zio.mod.o

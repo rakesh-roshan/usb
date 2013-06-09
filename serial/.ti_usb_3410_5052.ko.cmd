@@ -1,1 +1,0 @@
-cmd_drivers/usb/serial/ti_usb_3410_5052.ko := ld -r -m elf_i386 -T /home/roshan/Downloads/Kernels/linux-3.5/scripts/module-common.lds --build-id  -o drivers/usb/serial/ti_usb_3410_5052.ko drivers/usb/serial/ti_usb_3410_5052.o drivers/usb/serial/ti_usb_3410_5052.mod.o
