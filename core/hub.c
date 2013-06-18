@@ -76,8 +76,9 @@ struct usb_hub {
 							device present */
 	unsigned long		wakeup_bits[1];	/* ports that have signaled
 							remote wakeup */
-	unsigned long		exported_bits[1];	/* ports that have signaled
-							remote wakeup */
+	unsigned long		exported_bits[1];	/* ports that have been exported */
+	unsigned long		exportable_bits[1];	/* ports that can be exported */
+    unsigned long       disabled_bits[1]; /* ports that are disabled */
 #if USB_MAXCHILDREN > 31 /* 8*sizeof(unsigned long) - 1 */
 #error event_bits[] is too short!
 #endif
@@ -947,6 +948,38 @@ int usb_remove_device(struct usb_device *udev)
 	return 0;
 }
 
+enum usb_hub_port_status usb_get_port_status2(struct usb_hub *hub, int portnum)
+{
+    if(test_bit(portnum,hub->disabled_bits)){
+        return USB_PORT_DISABLED;
+    }
+    if(test_bit(portnum,hub->exportable_bits)){
+        return USB_PORT_REMOTED;
+    }
+    return USB_PORT_ENABLED;
+}
+
+/**
+ * usb_is_port_exportable: To test whether the port is exportable.
+ * @udev: device to socket is to be attached
+ * Context: @udev locked, must be able to sleep.
+ *
+ * After @udev's port has been disabled, khubd is notified and it will
+ * see that the device has been disconnected.  When the device is
+ * physically unplugged and something is plugged in, the events will
+ * be received and processed normally.
+ */
+enum usb_hub_port_status usb_get_port_status(struct usb_device *udev)
+{
+	struct usb_hub *hub;
+	if (!udev->parent)	/* root hub */
+		return 0;
+	hub = hdev_to_hub(udev->parent);
+    pr_info("Testing port %d in bits %lu\n",udev->portnum,hub->exportable_bits[0]);
+    return usb_get_port_status2(hub,udev->portnum);
+}
+EXPORT_SYMBOL_GPL(usb_get_port_status);
+
 /**
  * usb_get_socket - Get socket related to this device
  * @udev: device to socket is to be attached
@@ -1582,18 +1615,18 @@ static void hub_disconnect(struct usb_interface *intf)
 	kref_put(&hub->kref, hub_release);
 }
 
-static ssize_t show_match_port(struct device *dev, struct device_attribute *attr,
+static ssize_t show_manage_port(struct device *dev, struct device_attribute *attr,
                                char *buf)
 {
 	int i;
 	char *out = buf;
 	struct usb_hub *hub = dev_get_drvdata(dev);
-
+    char status_string[3][10]={"Enabled","Disabled","Remoted"};
+    enum usb_hub_port_status status;
 	//spin_lock(&busid_table_lock);
-	for (i = 1; i <= USB_MAXCHILDREN; i++){
-		if (test_bit(i,hub->exported_bits)){
-			out += sprintf(out, "%d->%p ", i, hub->sockets[i-1]);
-        }
+	for (i = 1; i <= hub->hdev->maxchild; i++){
+        status = usb_get_port_status2(hub,i);
+        out += sprintf(out, "%d->%d(%s) ", i, status,status_string[status]);
     }
 	//spin_unlock(&busid_table_lock);
 	out += sprintf(out, "\n");
@@ -1627,9 +1660,17 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
         	struct socket *socket;
             struct file *file;
             struct inode *inode;
-            struct usb_device *hdev = hub->hdev;
-            struct usb_device *udev;
+            //struct usb_device *hdev = hub->hdev;
+            //struct usb_device *udev;
 
+            if(!(usb_get_port_status2(hub,portnum)==USB_PORT_REMOTED)){ /* Only exportable ports can be exported */
+                pr_err("Not marked exportable port %d\n",i);
+                return 0;
+            }
+            if(test_bit(i,hub->exported_bits)){ /* It should not be exported to any other client */
+                pr_err("Already exported port %d\n",i);
+                return 0;
+            }
             file = fget(sockfd);
             if (!file) {
                 pr_err("[%d] invalid sockfd %d\n",pid,sockfd);
@@ -1672,14 +1713,144 @@ static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
     if(i == portnum-1){
         pr_info("hub.c: port num %d cleared from socket %d\n",portnum,sockfd);
         clear_bit(i+1, hub->exported_bits);
-        hub->sockets[i] = NULL;
+        hub->sockets[i+1] = NULL;
         return 1;
     }
     return 0;
 
 }
 
-static ssize_t store_match_port(struct device *dev, struct device_attribute *attr,
+static int mark_busid(struct usb_hub *hub,const char *busid)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j;
+    struct usb_device *hdev = hub->hdev;
+    struct usb_device *udev;
+
+    j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=1;i<USB_MAXCHILDREN && i != portnum ;i++);
+
+    if(i == portnum 
+       && usb_get_port_status2(hub,portnum)==USB_PORT_ENABLED){
+        set_bit(i, hub->exportable_bits);
+        if(test_bit(i,hub->exportable_bits)){
+            clear_bit(i, hub->exported_bits); // Resetting exported bits
+            pr_info("marked port %d in busid %s exportable\n",i,busid);
+            udev = hdev->children[i-1];
+            if(udev){
+                hub_port_logical_disconnect(hub,i);
+            }
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int unmark_busid(struct usb_hub *hub,const char *busid)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j;
+    struct usb_device *hdev = hub->hdev;
+    struct usb_device *udev;
+
+
+    j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=1;i<USB_MAXCHILDREN && i != portnum ;i++);
+
+    if(i == portnum && usb_get_port_status2(hub,portnum)==USB_PORT_REMOTED){
+        clear_bit(i, hub->exportable_bits);
+        if(!test_bit(i,hub->exportable_bits)){
+            pr_info("unmarked port %d in busid %s exportable\n",i,busid);
+            udev = hdev->children[i-1];
+            if(udev){
+                hub_port_logical_disconnect(hub,i);
+            }
+            return 1;
+        }
+
+    }
+    return 0;
+}
+
+static int enable_busid(struct usb_hub *hub,const char *busid)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j;
+    //struct usb_device *hdev = hub->hdev;
+    //struct usb_device *udev;
+
+    j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=1;i<USB_MAXCHILDREN && i != portnum ;i++);
+
+    if(i == portnum && usb_get_port_status2(hub,portnum)==USB_PORT_DISABLED){
+        clear_bit(i, hub->disabled_bits);
+        if(!test_bit(i,hub->disabled_bits)){
+            clear_bit(i, hub->exported_bits); // Resetting exported bits
+            clear_bit(i, hub->exportable_bits); // Resetting exportable bits
+            pr_info("marked port %d in busid %s exportable\n",i,busid);
+            hub_port_logical_disconnect(hub,i); // Regardless of device, restart the port scan
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static int disable_busid(struct usb_hub *hub,const char *busid)
+{
+    int i;
+    int portnum;
+    int busnum;
+    int j;
+    struct usb_device *hdev = hub->hdev;
+    struct usb_device *udev;
+
+
+    j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    if(j<2){
+        pr_info("busid wrong %s\n",busid);
+        return 0;
+    }
+    
+    for (i=1;i<USB_MAXCHILDREN && i != portnum ;i++);
+
+    if(i == portnum && !(usb_get_port_status2(hub,portnum)==USB_PORT_DISABLED)){
+        set_bit(i, hub->disabled_bits);
+        if(test_bit(i,hub->disabled_bits)){
+            pr_info("Disabled port %d in busid %s \n",i,busid);
+            udev = hdev->children[i-1];
+            if(udev){
+                hub_port_logical_disconnect(hub,i);
+            }
+            return 1;
+        }
+
+    }
+    return 0;
+}
+
+
+static ssize_t store_manage_port(struct device *dev, struct device_attribute *attr,
 				 const char *buf,size_t count)
 {
 	int len;
@@ -1711,26 +1882,55 @@ static ssize_t store_match_port(struct device *dev, struct device_attribute *att
     sscanf(buf + 4,"%d",&sockfd);
 
 	if (!strncmp(buf, "add ", 4)) {
-		if (add_match_busid(hub,busid,sockfd) < 0) {
+		if (add_match_busid(hub,busid,sockfd) <= 0) {
 			return -ENOMEM;
 		} else {
 			pr_debug("add busid %s\n", busid);
 			return count;
 		}
 	} else if (!strncmp(buf, "del ", 4)) {
-		if (del_match_busid(hub,busid,sockfd) < 0) {
+		if (del_match_busid(hub,busid,sockfd) <= 0) {
 			return -ENODEV;
 		} else {
 			pr_debug("del busid %s\n", busid);
 			return count;
 		}
+	} else if (!strncmp(buf, "Xed ", 4)) {
+		if (mark_busid(hub,busid) < 0) {
+			return -ENODEV;
+		} else {
+			pr_debug("marked exportable busid %s\n", busid);
+			return count;
+		}
+	} else if (!strncmp(buf, "unX ", 4)) {
+		if (unmark_busid(hub,busid) < 0) {
+			return -ENODEV;
+		} else {
+			pr_debug("unmarked exportable busid %s\n", busid);
+			return count;
+		}
+	} else if (!strncmp(buf, "ena ", 4)) {
+		if (enable_busid(hub,busid) < 0) {
+			return -ENODEV;
+		} else {
+			pr_debug("enabled busid %s\n", busid);
+			return count;
+		}
+	} else if (!strncmp(buf, "dis ", 4)) {
+		if (disable_busid(hub,busid) < 0) {
+			return -ENODEV;
+		} else {
+			pr_debug("disabled busid %s\n", busid);
+			return count;
+		}
 	} else {
+        pr_err("Invalid action %s \n",buf);
 		return -EINVAL;
 	}
 }
 
-static DEVICE_ATTR(match_port, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH, show_match_port,
-		   store_match_port);
+static DEVICE_ATTR(manage_port, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH, show_manage_port,
+		   store_manage_port);
 
 static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 {
@@ -1745,7 +1945,7 @@ static int hub_probe(struct usb_interface *intf, const struct usb_device_id *id)
 
     err = 0;
 
-	err = device_create_file(&intf->dev, &dev_attr_match_port);
+	err = device_create_file(&intf->dev, &dev_attr_manage_port);
 	if (err)
 		return err;
 
@@ -4274,6 +4474,12 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		return;
 	}
 
+    /* Return if port is disabled */
+    if (usb_get_port_status2(hub,port1)==USB_PORT_DISABLED){
+        return;
+    }
+        
+
 	for (i = 0; i < SET_CONFIG_TRIES; i++) {
 
 		/* reallocate for each attempt, since references
@@ -4718,7 +4924,7 @@ void usb_reset_socket(struct usb_device *udev)
         sock = hub->sockets[udev->portnum - 1];
         kernel_sock_shutdown(sock, SHUT_RDWR); 
 		sock_release(sock); 
-        hub->sockets[udev->portnum - 1]=NULL;
+        hub->sockets[udev->portnum]=NULL;
         clear_bit(udev->portnum,hub->exported_bits);
         //usb_remove_device(udev);
     }
