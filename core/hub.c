@@ -1697,23 +1697,46 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
     return 0;
 }
 
+static void usb_unexport_port(struct usb_hub *hub, int portnum)
+{
+
+    if(test_bit(portnum,hub->exported_bits)){
+        struct socket *sock;
+        pr_info("ROSHAN_HUB %d port is unexported \n",portnum);
+        sock = hub->sockets[portnum];
+        kernel_sock_shutdown(sock, SHUT_RDWR); 
+		sock_release(sock); 
+        hub->sockets[portnum]=NULL;
+        clear_bit(portnum,hub->exported_bits);
+        //usb_remove_device(udev);
+    }
+
+}
+
 static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
 {
     int i;
     int portnum;
     int busnum;
     int j = sscanf(busid,"%d-%d",&busnum, &portnum);
+    struct usb_device *hdev = hub->hdev;
+    struct usb_device *udev;
     if(j<2){
         pr_info("busid wrong %s\n",busid);
         return 0;
     }
     
-    for (i=0;i<USB_MAXCHILDREN && i != portnum-1 ;i++);
+    for (i=1;i<=USB_MAXCHILDREN && i != portnum ;i++);
 
-    if(i == portnum-1){
+    if(i == portnum){
         pr_info("hub.c: port num %d cleared from socket %d\n",portnum,sockfd);
-        clear_bit(i+1, hub->exported_bits);
-        hub->sockets[i+1] = NULL;
+        clear_bit(i, hub->exported_bits);
+        hub->sockets[i] = NULL;
+        usb_unexport_port(hub,i);
+        udev = hdev->children[i-1];
+        if(udev){
+            hub_port_logical_disconnect(hub,i);
+        }
         return 1;
     }
     return 0;
@@ -4918,16 +4941,7 @@ void usb_reset_socket(struct usb_device *udev)
 	if (!udev->parent)	/* Can't remove a root hub */
 		return;
 	hub = hdev_to_hub(udev->parent);
-    if(test_bit(udev->portnum,hub->exported_bits)){
-        struct socket *sock;
-        pr_info("ROSHAN_HUB %d port is unexported \n",udev->portnum);
-        sock = hub->sockets[udev->portnum - 1];
-        kernel_sock_shutdown(sock, SHUT_RDWR); 
-		sock_release(sock); 
-        hub->sockets[udev->portnum]=NULL;
-        clear_bit(udev->portnum,hub->exported_bits);
-        //usb_remove_device(udev);
-    }
+    usb_unexport_port(hub,udev->portnum);
 	return;
 }
 EXPORT_SYMBOL_GPL(usb_reset_socket);
