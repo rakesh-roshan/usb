@@ -6,3 +6,5 @@ module.*
 *.order
 Module.symvers
 .tmp_versions/
+gadget/
+misc/
