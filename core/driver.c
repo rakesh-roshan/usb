@@ -741,12 +741,12 @@ const struct usb_device_id *usb_match_id(struct usb_interface *interface,
 }
 EXPORT_SYMBOL_GPL(usb_match_id);
 
-static struct usb_hub *hdev_to_hub(struct usb_device *hdev)
+/*static struct usb_hub *hdev_to_hub(struct usb_device *hdev)
 {
         if (!hdev || !hdev->actconfig || !hdev->maxchild)
                 return NULL;
         return usb_get_intfdata(hdev->actconfig->interface[0]);
-}
+        }*/
 
 static int usb_device_match(struct device *dev, struct device_driver *drv)
 {
@@ -764,13 +764,18 @@ static int usb_device_match(struct device *dev, struct device_driver *drv)
 		struct usb_interface *intf;
 		struct usb_driver *usb_drv;
 		const struct usb_device_id *id;
+        struct usb_device *usb_dev;
 		intf = to_usb_interface(dev);
 		usb_drv = to_usb_driver(drv);
-        struct usb_device *usb_dev = interface_to_usbdev(intf);
+        usb_dev = interface_to_usbdev(intf);
 		/* device drivers never match interfaces */
 		if (is_usb_device_driver(drv))
 			return 0;
 
+        if(usb_get_port_status(usb_dev)==USB_PORT_REMOTED
+           && strcmp(usb_drv->name, "usbip-host")){ /* In case of remoted port only bind usbip-host */
+            return 0;
+        }
         /*if(   strcmp(usb_drv->name, "hub") 
            && strcmp(usb_drv->name, "usb") 
            && strcmp(usb_drv->name, "bus"))

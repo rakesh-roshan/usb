@@ -1735,6 +1735,7 @@ static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
         usb_unexport_port(hub,i);
         udev = hdev->children[i-1];
         if(udev){
+            pr_info("hub.c: disconnecting driver port %d\n",i);
             hub_port_logical_disconnect(hub,i);
         }
         return 1;
