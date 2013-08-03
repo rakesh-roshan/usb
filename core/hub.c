@@ -31,6 +31,7 @@
 #include <linux/slab.h>
 #include <net/sock.h>
 #include <linux/sched.h>
+#include <linux/time.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -184,6 +185,17 @@ static inline char *portspeed(struct usb_hub *hub, int portstatus)
 		return "1.5 Mb/s";
 	else
 		return "12 Mb/s";
+}
+
+static inline unsigned int get_timestamp(void)
+{
+	struct timeval tval;
+	unsigned int stamp;
+
+	do_gettimeofday(&tval);
+	stamp = tval.tv_sec & 0xFFF;	/* 2^32 = 4294967296. Limit to 4096s. */
+	stamp = stamp * 1000000 + tval.tv_usec;
+	return stamp;
 }
 
 /* Note that hdev or one of its children must be locked! */
@@ -634,7 +646,7 @@ static void kick_khubd(struct usb_hub *hub)
 
 	spin_lock_irqsave(&hub_event_lock, flags);
 	if (!hub->disconnected && list_empty(&hub->event_list)) {
-        pr_info("ROSHAN_hub added events in hubd for hub events list ");
+	  pr_info("%u ROSHAN_hub added events in hubd for hub events list ",get_timestamp());
 
 		list_add_tail(&hub->event_list, &hub_event_list);
 
@@ -649,7 +661,7 @@ static void kick_khubd(struct usb_hub *hub)
 void usb_kick_khubd(struct usb_device *hdev)
 {
 	struct usb_hub *hub = hdev_to_hub(hdev);
-        pr_info("ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list ");
+        pr_info("%u ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list ",get_timestamp());
 
 	if (hub)
 		kick_khubd(hub);
@@ -997,7 +1009,7 @@ struct socket * usb_get_socket(struct usb_device *udev)
 		return NULL;
 	hub = hdev_to_hub(udev->parent);
     if(test_bit(udev->portnum,hub->exported_bits)){
-        pr_info("ROSHAN_HUB %d port is exported \n",udev->portnum);
+        pr_info("%u ROSHAN_HUB %d port is exported \n",get_timestamp(),udev->portnum);
         return hub->sockets[udev->portnum];
     }
 	return NULL;
@@ -1237,7 +1249,7 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 static void hub_init_func2(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("ROSHAN_hub hub_init_func2 checking for hub events");
+    pr_info("%u ROSHAN_hub hub_init_func2 checking for hub events",get_timestamp());
 
 	hub_activate(hub, HUB_INIT2);
 }
@@ -1245,7 +1257,7 @@ static void hub_init_func2(struct work_struct *ws)
 static void hub_init_func3(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("ROSHAN_hub hub_init_func3 checking for hub events");
+    pr_info("%u ROSHAN_hub hub_init_func3 checking for hub events",get_timestamp());
 
 	hub_activate(hub, HUB_INIT3);
 }
@@ -1293,7 +1305,7 @@ static int hub_pre_reset(struct usb_interface *intf)
 static int hub_post_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
-    pr_info("ROSHAN_hub hub_post_reset checking for hub events");
+    pr_info("%u ROSHAN_hub hub_post_reset checking for hub events",get_timestamp());
 
 	hub_activate(hub, HUB_POST_RESET);
 	return 0;
@@ -1559,7 +1571,7 @@ static int hub_configure(struct usb_hub *hub,
 	/* maybe cycle the hub leds */
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
-    pr_info("ROSHAN_hub hub_configure checking for hub events");
+    pr_info("%u ROSHAN_hub hub_configure checking for hub events",get_timestamp());
 
 	hub_activate(hub, HUB_INIT);
 	return 0;
@@ -1702,7 +1714,7 @@ static void usb_unexport_port(struct usb_hub *hub, int portnum)
 
     if(test_bit(portnum,hub->exported_bits)){
         struct socket *sock;
-        pr_info("ROSHAN_HUB %d port is unexported \n",portnum);
+        pr_info("%u ROSHAN_HUB %d port is unexported \n",get_timestamp(),portnum);
         sock = hub->sockets[portnum];
         kernel_sock_shutdown(sock, SHUT_RDWR); 
 		sock_release(sock); 
@@ -2615,10 +2627,10 @@ int usb_new_device(struct usb_device *udev)
 	 * for configuring the device and invoking the add-device
 	 * notifier chain (used by usbfs and possibly others).
 	 */
-    pr_info("%s:%d : ROSHAN_hub adding new device on hub %d on port %d\n",
+    pr_info("%u %s:%d : ROSHAN_hub adding new device on hub %d on port %d\n",get_timestamp(),
             dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	err = device_add(&udev->dev);
-    pr_info("%s:%d : ROSHAN_hub added new device on hub %d on port %d\n",
+    pr_info("%u %s:%d : ROSHAN_hub added new device on hub %d on port %d\n",get_timestamp(),
             dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	if (err) {
 		dev_err(&udev->dev, "can't device_add, error %d\n", err);
@@ -3467,7 +3479,7 @@ static int hub_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("ROSHAN_hub hub_resume checking for hub events");
+    pr_info("%u ROSHAN_hub hub_resume checking for hub events",get_timestamp());
 	hub_activate(hub, HUB_RESUME);
 	return 0;
 }
@@ -3477,7 +3489,7 @@ static int hub_reset_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("ROSHAN_hub hub_reset_resume checking for hub events");
+    pr_info("%u ROSHAN_hub hub_reset_resume checking for hub events",get_timestamp());
 	hub_activate(hub, HUB_RESET_RESUME);
 	return 0;
 }
@@ -4210,7 +4222,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
  		 * authorization will assign the final address.
  		 */
 		if (udev->wusb == 0) {
-            pr_info("%s:%d : ROSHAN_hub setting address on hub %d on port %d\n",
+            pr_info("%u %s:%d : ROSHAN_hub setting address on hub %d on port %d\n",get_timestamp(),
                     dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
             for (j = 0; j < SET_ADDRESS_TRIES; ++j) {
 				retval = hub_set_address(udev, devnum);
@@ -4224,7 +4236,7 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					devnum, retval);
 				goto fail;
 			}
-            pr_info("%s:%d : ROSHAN_hub set address on hub %d on port %d\n",
+            pr_info("%u %s:%d : ROSHAN_hub set address on hub %d on port %d\n",get_timestamp(),
                     dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 			if (udev->speed == USB_SPEED_SUPER) {
 				devnum = udev->devnum;
@@ -4453,9 +4465,9 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 
 	/* Disconnect any existing devices under this port */
 	if (udev){
-        dev_info(hub_dev,"ROSHAN_HUB disconnecting port %d\n",port1);
+        dev_info(hub_dev,"%u ROSHAN_HUB disconnecting port %d\n",get_timestamp(),port1);
         usb_disconnect(&hdev->children[port1-1]);
-        dev_info(hub_dev,"ROSHAN_HUB disconnected port %d\n",port1);
+        dev_info(hub_dev,"%u ROSHAN_HUB disconnected port %d\n",get_timestamp(),port1);
 
     }
 	clear_bit(port1, hub->change_bits);
@@ -4469,9 +4481,9 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 
 	if (portchange & (USB_PORT_STAT_C_CONNECTION |
 				USB_PORT_STAT_C_ENABLE)) {
-        dev_info(hub_dev,"ROSHAN_HUB debouncing port %d\n",port1);
+        dev_info(hub_dev,"%u ROSHAN_HUB debouncing port %d\n",get_timestamp(),port1);
 		status = hub_port_debounce(hub, port1);
-        dev_info(hub_dev,"ROSHAN_HUB debounced port %d\n",port1);
+        dev_info(hub_dev,"%u ROSHAN_HUB debounced port %d\n",get_timestamp(),port1);
 		if (status < 0) {
 			if (printk_ratelimit())
 				dev_err(hub_dev, "connect-debounce failed, "
@@ -4509,9 +4521,9 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		/* reallocate for each attempt, since references
 		 * to the previous one can escape in various ways
 		 */
-		udev = usb_alloc_dev(hdev, hdev->bus, port1);
-        pr_info("%s:%d : ROSHAN_hub allocating device on hub %d on port %d\n",
+	  pr_info("%u %s:%d : ROSHAN_hub allocating device on hub %d on port %d\n",get_timestamp(),
                 dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+		udev = usb_alloc_dev(hdev, hdev->bus, port1);
 		if (!udev) {
 			dev_err (hub_dev,
 				"couldn't allocate port %d usb_device\n",
@@ -4537,10 +4549,10 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		}
 
 		/* reset (non-USB 3.0 devices) and get descriptor */
-        pr_info("%s:%d : ROSHAN_hub initing address on hub %d on port %d\n",
+        pr_info("%u %s:%d : ROSHAN_hub initing address on hub %d on port %d\n",get_timestamp(),
                 dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		status = hub_port_init(hub, udev, port1, i);
-        pr_info("%s:%d : ROSHAN_hub init address on hub %d on port %d\n",
+        pr_info("%u %s:%d : ROSHAN_hub init address on hub %d on port %d\n",get_timestamp(),
                 dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		if (status < 0)
 			goto loop;
@@ -4710,10 +4722,10 @@ static void hub_events(void)
 		spin_lock_irq(&hub_event_lock);
 		if (list_empty(&hub_event_list)) {
 			spin_unlock_irq(&hub_event_lock);
-            pr_info("ROSHAN_hub finished checking for hub events list EMPTY");
+            pr_info("%u ROSHAN_hub finished checking for hub events list EMPTY",get_timestamp());
 			break;
 		}
-        pr_info("ROSHAN_hub checking for hub events");
+        pr_info("%u ROSHAN_hub checking for hub events",get_timestamp());
 
 		tmp = hub_event_list.next;
 		list_del_init(tmp);
