@@ -4521,9 +4521,10 @@ static void hub_port_connect_change(struct usb_hub *hub, int port1,
 		/* reallocate for each attempt, since references
 		 * to the previous one can escape in various ways
 		 */
-	  pr_info("%u %s:%d : ROSHAN_hub allocating device on hub %d on port %d\n",get_timestamp(),
-                dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+	  pr_info("%u : ROSHAN_hub allocating device on hub port %d \n",get_timestamp(),port1);
 		udev = usb_alloc_dev(hdev, hdev->bus, port1);
+	  pr_info("%u %s:%d : ROSHAN_hub allocated device on hub %d on port %d\n",get_timestamp(),
+                dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 		if (!udev) {
 			dev_err (hub_dev,
 				"couldn't allocate port %d usb_device\n",
