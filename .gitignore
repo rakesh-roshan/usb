@@ -10,3 +10,4 @@ gadget/
 misc/
 modules.builtin
 storage/
+*.mod.c
