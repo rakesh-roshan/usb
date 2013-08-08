@@ -32,6 +32,7 @@
 #include <net/sock.h>
 #include <linux/sched.h>
 #include <linux/time.h>
+#include <linux/string.h>
 
 #include <asm/uaccess.h>
 #include <asm/byteorder.h>
@@ -87,7 +88,7 @@ struct usb_hub {
 	struct usb_hub_descriptor *descriptor;	/* class descriptor */
 	struct usb_tt		tt;		/* Transaction Translator */
 
-    struct socket * sockets[USB_MAXCHILDREN];/*Exported port details*/
+    struct socket_info_t * sockets_info[USB_MAXCHILDREN];/*Exported port details*/
 
 	unsigned		mA_per_port;	/* current for each child */
 
@@ -1002,7 +1003,7 @@ EXPORT_SYMBOL_GPL(usb_get_port_status);
  * physically unplugged and something is plugged in, the events will
  * be received and processed normally.
  */
-struct socket * usb_get_socket(struct usb_device *udev)
+struct socket_info_t * usb_get_socket_info(struct usb_device *udev)
 {
 	struct usb_hub *hub;
 	if (!udev->parent)	/* Can't remove a root hub */
@@ -1010,11 +1011,11 @@ struct socket * usb_get_socket(struct usb_device *udev)
 	hub = hdev_to_hub(udev->parent);
     if(test_bit(udev->portnum,hub->exported_bits)){
         pr_info("%u ROSHAN_HUB %d port is exported \n",get_timestamp(),udev->portnum);
-        return hub->sockets[udev->portnum];
+        return hub->sockets_info[udev->portnum];
     }
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(usb_get_socket);
+EXPORT_SYMBOL_GPL(usb_get_socket_info);
 
 enum hub_activation_type {
 	HUB_INIT, HUB_INIT2, HUB_INIT3,		/* INITs must come first */
@@ -1646,7 +1647,7 @@ static ssize_t show_manage_port(struct device *dev, struct device_attribute *att
 	return out - buf;
 }
 
-static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
+static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd, char *key)
 {
     int i;
     int portnum;
@@ -1697,13 +1698,15 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
             socket = SOCKET_I(inode);
 
 
-            pr_info("hub.c[%d]: port num %d matched to socket %d\n",pid, portnum,sockfd);
-        set_bit(i, hub->exported_bits);
-        hub->sockets[i] = socket;
-        /*udev = hdev->children[port1-1];
-        if(udev){
-            usb_reset_and_verify_device(udev);
-            }*/
+            pr_info("hub.c[%d]: port num %d matched to socket %d key %s\n",pid, portnum,sockfd,key);
+            set_bit(i, hub->exported_bits);
+            hub->sockets_info[i] = kzalloc(sizeof(struct socket_info_t),GFP_KERNEL);
+            hub->sockets_info[i]->sock = socket;
+            hub->sockets_info[i]->key  = key;
+            /*udev = hdev->children[port1-1];
+              if(udev){
+              usb_reset_and_verify_device(udev);
+              }*/
         return 1;
     }
     return 0;
@@ -1715,10 +1718,12 @@ static void usb_unexport_port(struct usb_hub *hub, int portnum)
     if(test_bit(portnum,hub->exported_bits)){
         struct socket *sock;
         pr_info("%u ROSHAN_HUB %d port is unexported \n",get_timestamp(),portnum);
-        sock = hub->sockets[portnum];
+        sock = hub->sockets_info[portnum]->sock;
+        kfree(hub->sockets_info[portnum]->key);
         kernel_sock_shutdown(sock, SHUT_RDWR); 
 		sock_release(sock); 
-        hub->sockets[portnum]=NULL;
+        kfree(hub->sockets_info[portnum]);
+        hub->sockets_info[portnum]=NULL;
         clear_bit(portnum,hub->exported_bits);
         //usb_remove_device(udev);
     }
@@ -1742,8 +1747,6 @@ static int del_match_busid(struct usb_hub *hub,const char *busid, int sockfd)
 
     if(i == portnum){
         pr_info("hub.c: port num %d cleared from socket %d\n",portnum,sockfd);
-        clear_bit(i, hub->exported_bits);
-        hub->sockets[i] = NULL;
         usb_unexport_port(hub,i);
         udev = hdev->children[i-1];
         if(udev){
@@ -1887,10 +1890,14 @@ static int disable_busid(struct usb_hub *hub,const char *busid)
 
 
 static ssize_t store_manage_port(struct device *dev, struct device_attribute *attr,
-				 const char *buf,size_t count)
+                                 const char *buf,size_t count)
 {
 	int len;
 	char busid[BUSID_SIZE];
+    char *key;
+    char *token;
+    char *cmd;
+    char *temp_buf, *bufp;
 	struct usb_hub *hub = dev_get_drvdata(dev);
     int sockfd;
     int bus_id_idx;
@@ -1898,69 +1905,111 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
 	if (count < 7)
 		return -EINVAL;
 
-    bus_id_idx = strstr(buf+4," ")-(buf+4);
+    bufp=temp_buf = kstrdup(buf,GFP_KERNEL);
 
-    pr_info("Bus id provided in %s\n",buf);
-    if(bus_id_idx < 0){
-        pr_info("Bus id not provided in %s\n",buf);
+    if((token=strsep(&bufp," "))==NULL){
+        pr_err("Wrong attrib value cmd %s\n",buf);
+        kfree(temp_buf);
         return -EINVAL;
     }
-
-    bus_id_idx += (4 + 1);
+    cmd = token;
+    if((token=strsep(&bufp," "))==NULL){
+        pr_err("Wrong attrib value socket %s\n",buf);
+        kfree(temp_buf);
+        return -EINVAL;
+    }
+    sscanf(token,"%d",&sockfd);
+    if((token=strsep(&bufp," "))==NULL){
+        pr_err("Wrong attrib value busid %s\n",buf);
+        kfree(temp_buf);
+        return -EINVAL;
+    }
 	/* strnlen() does not include \0 */
-	len = strnlen(buf + bus_id_idx, BUSID_SIZE);
+	len = strnlen(token, BUSID_SIZE);
 
 	/* busid needs to include \0 termination */
-	if (!(len < BUSID_SIZE))
+	if (!(len < BUSID_SIZE)){
+        kfree(temp_buf);
 		return -EINVAL;
+    }
 
-	strncpy(busid, buf + bus_id_idx, BUSID_SIZE);
-    sscanf(buf + 4,"%d",&sockfd);
+	strncpy(busid, token, BUSID_SIZE);
 
-	if (!strncmp(buf, "add ", 4)) {
-		if (add_match_busid(hub,busid,sockfd) <= 0) {
+	if (!strncmp(cmd, "add ", 4)) {
+        if((token=strsep(&bufp," "))==NULL){
+            pr_err("Wrong attrib value busid %s\n",buf);
+            kfree(temp_buf);
+            return -EINVAL;
+        }
+        key = kzalloc(strlen(token)+1,GFP_KERNEL);
+        strcpy(key,token);
+
+		if (add_match_busid(hub,busid,sockfd,key) <= 0) {
+            kfree(key);
+            kfree(temp_buf);
 			return -ENOMEM;
 		} else {
 			pr_debug("add busid %s\n", busid);
-			return count;
+            kfree(temp_buf);
+            return count;
 		}
-	} else if (!strncmp(buf, "del ", 4)) {
+	} else if (!strncmp(cmd, "del ", 4)) {
+        if((token=strsep(&bufp," "))==NULL){
+            pr_err("Wrong attrib value busid %s\n",buf);
+            kfree(temp_buf);
+            return -EINVAL;
+        }
+        //key = kzalloc(strlen(token)+1,GFP_KERNEL);
+        //strcpy(key,token);
+
 		if (del_match_busid(hub,busid,sockfd) <= 0) {
-			return -ENODEV;
+            //kfree(key);
+            kfree(temp_buf);
+            return -ENODEV;
 		} else {
 			pr_debug("del busid %s\n", busid);
+            kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(buf, "Xed ", 4)) {
+	} else if (!strncmp(cmd, "Xed ", 4)) {
 		if (mark_busid(hub,busid) < 0) {
+            kfree(temp_buf);
 			return -ENODEV;
 		} else {
 			pr_debug("marked exportable busid %s\n", busid);
+            kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(buf, "unX ", 4)) {
+	} else if (!strncmp(cmd, "unX ", 4)) {
 		if (unmark_busid(hub,busid) < 0) {
+            kfree(temp_buf);
 			return -ENODEV;
 		} else {
 			pr_debug("unmarked exportable busid %s\n", busid);
+            kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(buf, "ena ", 4)) {
+	} else if (!strncmp(cmd, "ena ", 4)) {
 		if (enable_busid(hub,busid) < 0) {
+            kfree(temp_buf);
 			return -ENODEV;
 		} else {
 			pr_debug("enabled busid %s\n", busid);
+            kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(buf, "dis ", 4)) {
+	} else if (!strncmp(cmd, "dis ", 4)) {
 		if (disable_busid(hub,busid) < 0) {
+            kfree(temp_buf);
 			return -ENODEV;
 		} else {
 			pr_debug("disabled busid %s\n", busid);
+            kfree(temp_buf);
 			return count;
 		}
 	} else {
         pr_err("Invalid action %s \n",buf);
+        kfree(temp_buf);
 		return -EINVAL;
 	}
 }
