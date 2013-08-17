@@ -1935,14 +1935,20 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
 
 	strncpy(busid, token, BUSID_SIZE);
 
-	if (!strncmp(cmd, "add ", 4)) {
+    pr_info("CMD(%s) sockfd(%d) BUSID(%s)\n",cmd,sockfd,busid);
+	if (!strncmp(cmd, "add", 3)) {
         if((token=strsep(&bufp," "))==NULL){
             pr_err("Wrong attrib value busid %s\n",buf);
             kfree(temp_buf);
             return -EINVAL;
         }
+        if(strlen(token)>16){
+            pr_err("Key length is more than 16\n");
+            kfree(temp_buf);
+            return -ENOMEM;
+        }
         key = kzalloc(strlen(token)+1,GFP_KERNEL);
-        strcpy(key,token);
+        sscanf(token,"%s",key);
 
 		if (add_match_busid(hub,busid,sockfd,key) <= 0) {
             kfree(key);
@@ -1953,7 +1959,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
             kfree(temp_buf);
             return count;
 		}
-	} else if (!strncmp(cmd, "del ", 4)) {
+	} else if (!strncmp(cmd, "del", 3)) {
         if((token=strsep(&bufp," "))==NULL){
             pr_err("Wrong attrib value busid %s\n",buf);
             kfree(temp_buf);
@@ -1971,7 +1977,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
             kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(cmd, "Xed ", 4)) {
+	} else if (!strncmp(cmd, "Xed", 3)) {
 		if (mark_busid(hub,busid) < 0) {
             kfree(temp_buf);
 			return -ENODEV;
@@ -1980,7 +1986,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
             kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(cmd, "unX ", 4)) {
+	} else if (!strncmp(cmd, "unX", 3)) {
 		if (unmark_busid(hub,busid) < 0) {
             kfree(temp_buf);
 			return -ENODEV;
@@ -1989,7 +1995,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
             kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(cmd, "ena ", 4)) {
+	} else if (!strncmp(cmd, "ena", 3)) {
 		if (enable_busid(hub,busid) < 0) {
             kfree(temp_buf);
 			return -ENODEV;
@@ -1998,7 +2004,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
             kfree(temp_buf);
 			return count;
 		}
-	} else if (!strncmp(cmd, "dis ", 4)) {
+	} else if (!strncmp(cmd, "dis", 3)) {
 		if (disable_busid(hub,busid) < 0) {
             kfree(temp_buf);
 			return -ENODEV;
@@ -2008,7 +2014,7 @@ static ssize_t store_manage_port(struct device *dev, struct device_attribute *at
 			return count;
 		}
 	} else {
-        pr_err("Invalid action %s \n",buf);
+        pr_err("Invalid action %s \n",cmd);
         kfree(temp_buf);
 		return -EINVAL;
 	}
