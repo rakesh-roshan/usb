@@ -647,7 +647,7 @@ static void kick_khubd(struct usb_hub *hub)
 
 	spin_lock_irqsave(&hub_event_lock, flags);
 	if (!hub->disconnected && list_empty(&hub->event_list)) {
-	  pr_info("%u ROSHAN_hub added events in hubd for hub events list ",get_timestamp());
+	  pr_info("%u ROSHAN_hub added events in hubd for hub events list \n",get_timestamp());
 
 		list_add_tail(&hub->event_list, &hub_event_list);
 
@@ -662,7 +662,7 @@ static void kick_khubd(struct usb_hub *hub)
 void usb_kick_khubd(struct usb_device *hdev)
 {
 	struct usb_hub *hub = hdev_to_hub(hdev);
-        pr_info("%u ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list ",get_timestamp());
+        pr_info("%u ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list \n",get_timestamp());
 
 	if (hub)
 		kick_khubd(hub);
@@ -988,7 +988,7 @@ enum usb_hub_port_status usb_get_port_status(struct usb_device *udev)
 	if (!udev->parent)	/* root hub */
 		return 0;
 	hub = hdev_to_hub(udev->parent);
-    pr_info("Testing port %d in bits %lu\n",udev->portnum,hub->exportable_bits[0]);
+    //pr_info("Testing port %d in bits %lu\n",udev->portnum,hub->exportable_bits[0]);
     return usb_get_port_status2(hub,udev->portnum);
 }
 EXPORT_SYMBOL_GPL(usb_get_port_status);
@@ -1250,7 +1250,7 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 static void hub_init_func2(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("%u ROSHAN_hub hub_init_func2 checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_init_func2 checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT2);
 }
@@ -1258,7 +1258,7 @@ static void hub_init_func2(struct work_struct *ws)
 static void hub_init_func3(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("%u ROSHAN_hub hub_init_func3 checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_init_func3 checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT3);
 }
@@ -1306,7 +1306,7 @@ static int hub_pre_reset(struct usb_interface *intf)
 static int hub_post_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
-    pr_info("%u ROSHAN_hub hub_post_reset checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_post_reset checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_POST_RESET);
 	return 0;
@@ -1572,7 +1572,7 @@ static int hub_configure(struct usb_hub *hub,
 	/* maybe cycle the hub leds */
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
-    pr_info("%u ROSHAN_hub hub_configure checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_configure checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT);
 	return 0;
@@ -1659,7 +1659,7 @@ static int add_match_busid(struct usb_hub *hub,const char *busid, int sockfd, ch
 	if ((pid = task_pid_nr(current)) < 0) {
         pr_err("unable to get pid");
 	} else {
-        pr_info("The process id is %d", pid);
+        pr_info("The process id is %d\n", pid);
 	}
     j = sscanf(busid,"%d-%d",&busnum, &portnum);
     if(j<2){
@@ -3528,7 +3528,7 @@ static int hub_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("%u ROSHAN_hub hub_resume checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_resume checking for hub events\n",get_timestamp());
 	hub_activate(hub, HUB_RESUME);
 	return 0;
 }
@@ -3538,7 +3538,7 @@ static int hub_reset_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("%u ROSHAN_hub hub_reset_resume checking for hub events",get_timestamp());
+    pr_info("%u ROSHAN_hub hub_reset_resume checking for hub events\n",get_timestamp());
 	hub_activate(hub, HUB_RESET_RESUME);
 	return 0;
 }
@@ -4772,10 +4772,10 @@ static void hub_events(void)
 		spin_lock_irq(&hub_event_lock);
 		if (list_empty(&hub_event_list)) {
 			spin_unlock_irq(&hub_event_lock);
-            pr_info("%u ROSHAN_hub finished checking for hub events list EMPTY",get_timestamp());
+            pr_info("%u ROSHAN_hub finished checking for hub events list EMPTY\n",get_timestamp());
 			break;
 		}
-        pr_info("%u ROSHAN_hub checking for hub events",get_timestamp());
+        pr_info("%u ROSHAN_hub checking for hub events\n",get_timestamp());
 
 		tmp = hub_event_list.next;
 		list_del_init(tmp);
