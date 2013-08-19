@@ -647,7 +647,7 @@ static void kick_khubd(struct usb_hub *hub)
 
 	spin_lock_irqsave(&hub_event_lock, flags);
 	if (!hub->disconnected && list_empty(&hub->event_list)) {
-	  pr_info("%u ROSHAN_hub added events in hubd for hub events list \n",get_timestamp());
+	  //pr_info("%u ROSHAN_hub added events in hubd for hub events list \n",get_timestamp());
 
 		list_add_tail(&hub->event_list, &hub_event_list);
 
@@ -662,7 +662,7 @@ static void kick_khubd(struct usb_hub *hub)
 void usb_kick_khubd(struct usb_device *hdev)
 {
 	struct usb_hub *hub = hdev_to_hub(hdev);
-        pr_info("%u ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list \n",get_timestamp());
+        //pr_info("%u ROSHAN_hub usb_kick_khubd adding events in hubd for hub events list \n",get_timestamp());
 
 	if (hub)
 		kick_khubd(hub);
@@ -1250,7 +1250,7 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 static void hub_init_func2(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("%u ROSHAN_hub hub_init_func2 checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_init_func2 checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT2);
 }
@@ -1258,7 +1258,7 @@ static void hub_init_func2(struct work_struct *ws)
 static void hub_init_func3(struct work_struct *ws)
 {
 	struct usb_hub *hub = container_of(ws, struct usb_hub, init_work.work);
-    pr_info("%u ROSHAN_hub hub_init_func3 checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_init_func3 checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT3);
 }
@@ -1306,7 +1306,7 @@ static int hub_pre_reset(struct usb_interface *intf)
 static int hub_post_reset(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
-    pr_info("%u ROSHAN_hub hub_post_reset checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_post_reset checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_POST_RESET);
 	return 0;
@@ -1572,7 +1572,7 @@ static int hub_configure(struct usb_hub *hub,
 	/* maybe cycle the hub leds */
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
-    pr_info("%u ROSHAN_hub hub_configure checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_configure checking for hub events\n",get_timestamp());
 
 	hub_activate(hub, HUB_INIT);
 	return 0;
@@ -2682,11 +2682,11 @@ int usb_new_device(struct usb_device *udev)
 	 * for configuring the device and invoking the add-device
 	 * notifier chain (used by usbfs and possibly others).
 	 */
-    pr_info("%u %s:%d : ROSHAN_hub adding new device on hub %d on port %d\n",get_timestamp(),
-            dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+    //pr_info("%u %s:%d : ROSHAN_hub adding new device on hub %d on port %d\n",get_timestamp(),
+     //       dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	err = device_add(&udev->dev);
-    pr_info("%u %s:%d : ROSHAN_hub added new device on hub %d on port %d\n",get_timestamp(),
-            dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+    //pr_info("%u %s:%d : ROSHAN_hub added new device on hub %d on port %d\n",get_timestamp(),
+     //       dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 	if (err) {
 		dev_err(&udev->dev, "can't device_add, error %d\n", err);
 		goto fail;
@@ -3534,7 +3534,7 @@ static int hub_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("%u ROSHAN_hub hub_resume checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_resume checking for hub events\n",get_timestamp());
 	hub_activate(hub, HUB_RESUME);
 	return 0;
 }
@@ -3544,7 +3544,7 @@ static int hub_reset_resume(struct usb_interface *intf)
 	struct usb_hub *hub = usb_get_intfdata(intf);
 
 	dev_dbg(&intf->dev, "%s\n", __func__);
-    pr_info("%u ROSHAN_hub hub_reset_resume checking for hub events\n",get_timestamp());
+    //pr_info("%u ROSHAN_hub hub_reset_resume checking for hub events\n",get_timestamp());
 	hub_activate(hub, HUB_RESET_RESUME);
 	return 0;
 }
@@ -4277,8 +4277,8 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
  		 * authorization will assign the final address.
  		 */
 		if (udev->wusb == 0) {
-            pr_info("%u %s:%d : ROSHAN_hub setting address on hub %d on port %d\n",get_timestamp(),
-                    dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+            //pr_info("%u %s:%d : ROSHAN_hub setting address on hub %d on port %d\n",get_timestamp(),
+             //       dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
             for (j = 0; j < SET_ADDRESS_TRIES; ++j) {
 				retval = hub_set_address(udev, devnum);
 				if (retval >= 0)
@@ -4291,8 +4291,8 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 					devnum, retval);
 				goto fail;
 			}
-            pr_info("%u %s:%d : ROSHAN_hub set address on hub %d on port %d\n",get_timestamp(),
-                    dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
+            //pr_info("%u %s:%d : ROSHAN_hub set address on hub %d on port %d\n",get_timestamp(),
+                    //dev_name(&udev->dev),udev->devnum,udev->bus->busnum,udev->portnum);
 			if (udev->speed == USB_SPEED_SUPER) {
 				devnum = udev->devnum;
 				dev_info(&udev->dev,
@@ -4778,10 +4778,10 @@ static void hub_events(void)
 		spin_lock_irq(&hub_event_lock);
 		if (list_empty(&hub_event_list)) {
 			spin_unlock_irq(&hub_event_lock);
-            pr_info("%u ROSHAN_hub finished checking for hub events list EMPTY\n",get_timestamp());
+            //pr_info("%u ROSHAN_hub finished checking for hub events list EMPTY\n",get_timestamp());
 			break;
 		}
-        pr_info("%u ROSHAN_hub checking for hub events\n",get_timestamp());
+        //pr_info("%u ROSHAN_hub checking for hub events\n",get_timestamp());
 
 		tmp = hub_event_list.next;
 		list_del_init(tmp);
