@@ -741,13 +741,6 @@ const struct usb_device_id *usb_match_id(struct usb_interface *interface,
 }
 EXPORT_SYMBOL_GPL(usb_match_id);
 
-/*static struct usb_hub *hdev_to_hub(struct usb_device *hdev)
-{
-        if (!hdev || !hdev->actconfig || !hdev->maxchild)
-                return NULL;
-        return usb_get_intfdata(hdev->actconfig->interface[0]);
-        }*/
-
 static int usb_device_match(struct device *dev, struct device_driver *drv)
 {
 	/* devices and interfaces are handled separately */
@@ -776,23 +769,13 @@ static int usb_device_match(struct device *dev, struct device_driver *drv)
            && strcmp(usb_drv->name, "usbip-host")){ /* In case of remoted port only bind usbip-host */
             return 0;
         }
-        /*if(   strcmp(usb_drv->name, "hub") 
-           && strcmp(usb_drv->name, "usb") 
-           && strcmp(usb_drv->name, "bus"))
-           return 0;*/
 		id = usb_match_id(intf, usb_drv->id_table);
 		if (id){
-           		pr_info("%s:%d : ROSHAN matched new device driver %s on hub %d on port %d\n",
-                        dev_name(dev),usb_dev->devnum,usb_drv->name,usb_dev->parent?usb_dev->parent->devnum:0,usb_dev->portnum);
- 
 			return 1;
         }
 
 		id = usb_match_dynamic_id(intf, usb_drv);
 		if (id){
-           		pr_info("%s:%d : ROSHAN matched new device driver dynamically %s on hub %d on port %d\n",
-                        dev_name(dev),usb_dev->devnum,usb_drv->name,usb_dev->parent?usb_dev->parent->devnum:0,usb_dev->portnum);
-
 			return 1;
         }
 	}
@@ -878,7 +861,7 @@ int usb_register_device_driver(struct usb_device_driver *new_udriver,
 	retval = driver_register(&new_udriver->drvwrap.driver);
 
 	if (!retval)
-		pr_info("%s: ROSHAN registered new device driver %s\n",
+		pr_info("%s: registered new device driver %s\n",
 			usbcore_name, new_udriver->name);
 	else
 		printk(KERN_ERR "%s: error %d registering device "
